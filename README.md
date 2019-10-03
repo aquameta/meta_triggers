@@ -16,7 +16,7 @@ create extension meta_triggers;
 ```
 
 # Usage
-```sql
+```
 aquameta=# insert into meta.schema(name) values ('my_new_schema');
 INSERT 0 1
 aquameta=# update meta.schema set name='my_newer_schema' where name='my_new_schema';
