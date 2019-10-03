@@ -1,0 +1,4 @@
+comment = 'insert, update and delete triggers for the meta system catalog'
+default_version = '0.2.0'
+relocatable = false
+schema = 'meta'
