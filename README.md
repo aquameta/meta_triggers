@@ -1,5 +1,5 @@
 # meta_triggers
-This extension makes the [meta](https://github.com/aquametalabs/meta) writable by adding insert, update and delete triggers to its views. Typical DDL operations like `create schema foo` can be performed using only insert update and delete, e.g. `insert into meta.schema(name) values ('foo')`.
+This extension makes the [meta](https://github.com/aquametalabs/meta) extension writable, by adding insert, update and delete triggers to its views. Typical DDL operations like `create schema foo` can be performed using insert update and delete, e.g. `insert into meta.schema(name) values ('foo')`.
 
 # Install
 
@@ -17,5 +17,13 @@ create extension meta_triggers;
 
 # Usage
 ```sql
-insert into meta.schema(name) values ('my_new_schema');
+aquameta=# insert into meta.schema(name) values ('my_new_schema');
+INSERT 0 1
+aquameta=# update meta.schema set name='my_newer_schema' where name='my_new_schema';
+UPDATE 1
+aquameta=# delete from meta.schema where name='my_newer_schema';
+DELETE 1
 ```
+# Documentation
+
+A complete list of supported views is available in the [meta](https://github.com/aquametalabs/meta) extension.
