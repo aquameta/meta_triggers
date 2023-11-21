@@ -87,6 +87,55 @@ create function meta.schema_delete() returns trigger as $$
 $$ language plpgsql;
 
 
+
+/******************************************************************************
+ * meta.type
+ *****************************************************************************/
+
+create function meta.stmt_type_create(definition text) returns text as $$
+    select definition;
+$$ language sql;
+
+
+create function meta.stmt_type_drop(type_id meta.type_id) returns text as $$
+    select 'drop type ' ||
+        quote_ident((type_id).schema_name) || '.' ||
+        quote_ident((type_id).name) || ';';
+$$ language sql;
+
+
+create function meta.type_insert() returns trigger as $$
+    begin
+        perform meta.require_all(public.hstore(NEW), array['definition']);
+
+        execute meta.stmt_type_create(NEW.definition);
+
+        return NEW;
+    end;
+$$ language plpgsql;
+
+
+create function meta.type_update() returns trigger as $$
+    begin
+        perform meta.require_all(public.hstore(NEW), array['definition']);
+
+        execute meta.stmt_type_drop(OLD.id);
+        execute meta.stmt_type_create(NEW.definition);
+
+        return NEW;
+    end;
+$$ language plpgsql;
+
+
+create function meta.type_delete() returns trigger as $$
+    begin
+        execute meta.stmt_type_drop(OLD.id);
+        return OLD;
+    end;
+$$ language plpgsql;
+
+
+
 /******************************************************************************
  * meta.sequence
  *****************************************************************************/
@@ -674,52 +723,6 @@ $$ language plpgsql;
 
 
 
-
-/******************************************************************************
- * meta.type_definition
- *****************************************************************************/
-
-create function meta.stmt_type_definition_create(definition text) returns text as $$
-    select definition;
-$$ language sql;
-
-
-create function meta.stmt_type_definition_drop(type_id meta.type_id) returns text as $$
-    select 'drop type ' ||
-        quote_ident((type_id).schema_name) || '.' ||
-        quote_ident(type_id.name) || ';';
-$$ language sql;
-
-
-create function meta.type_definition_insert() returns trigger as $$
-    begin
-        perform meta.require_all(public.hstore(NEW), array['definition']);
-
-        execute meta.stmt_type_definition_create(NEW.definition);
-
-        return NEW;
-    end;
-$$ language plpgsql;
-
-
-create function meta.type_definition_update() returns trigger as $$
-    begin
-        perform meta.require_all(public.hstore(NEW), array['definition']);
-
-        execute meta.stmt_type_definition_drop(OLD.id);
-        execute meta.stmt_type_definition_create(NEW.definition);
-
-        return NEW;
-    end;
-$$ language plpgsql;
-
-
-create function meta.type_definition_delete() returns trigger as $$
-    begin
-        execute meta.stmt_type_definition_drop(OLD.id);
-        return OLD;
-    end;
-$$ language plpgsql;
 
 
 
@@ -2014,6 +2017,11 @@ $$ language plpgsql;
 create trigger meta_schema_insert_trigger instead of insert on meta.schema for each row execute procedure meta.schema_insert();
 create trigger meta_schema_update_trigger instead of update on meta.schema for each row execute procedure meta.schema_update();
 create trigger meta_schema_delete_trigger instead of delete on meta.schema for each row execute procedure meta.schema_delete();
+
+-- TYPE
+create trigger meta_type_insert_trigger instead of insert on meta.type for each row execute procedure meta.type_insert();
+create trigger meta_type_update_trigger instead of update on meta.type for each row execute procedure meta.type_update();
+create trigger meta_type_delete_trigger instead of delete on meta.type for each row execute procedure meta.type_delete();
 
 -- SEQUENCE
 create trigger meta_sequence_insert_trigger instead of insert on meta.sequence for each row execute procedure meta.sequence_insert();
