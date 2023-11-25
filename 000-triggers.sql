@@ -640,7 +640,7 @@ $$ language plpgsql;
 /******************************************************************************
  * meta.function
  *****************************************************************************/
-create or replace function meta.stmt_function_create(schema_name text, function_name text, parameters text[], return_type text, definition text, language text, returns_set boolean) returns text as $$
+create or replace function meta.stmt_function_create(schema_name text, function_name text, type_sig text[], parameters text[], return_type text, definition text, language text, returns_set boolean, volatility text, parallel text, security text) returns text as $$
 declare
     stmt text;
 begin
@@ -648,53 +648,52 @@ begin
     stmt := 'create function ' || quote_ident(schema_name) || '.' || quote_ident(function_name);
 
     -- "(a text, b uuid default null)"
-    stmt := stmt || '(' || array_to_string(parameters, ',') || ') ';
+    if parameters is not null then
+        stmt := stmt || '(' || array_to_string(parameters, ',') || ') ';
+    else
+        stmt := stmt || '(' || array_to_string(type_sig, ',') || ') ';
+    end if;
 
-    -- "returns setof integer (TODO audit return_type) as $body$"
-    stmt := stmt || 'returns ' || case when returns_set is not null and returns_set = 't' then 'setof ' else '' end || return_type || E' as $body$\n';
+    -- stmt := stmt || 'returns ' || case when returns_set is not null and returns_set = 't' then 'setof ' else '' end || return_type || E' as $body$\n';
+    -- this is a change from meta.function_old to meta.function_pg (current).  return_type now includes setof and returns_set is redundant.  like?
+    stmt := stmt || 'returns ' || return_type || E' as $body$\n';
 
     -- "select 1; $body$ language plpgsql;"
-    stmt := stmt || definition || E'\n$body$ language ' || quote_ident(language) || ';';
+    stmt := stmt || definition || E'\n$body$ language ' || quote_ident(language);
+
+    if volatility is not null and volatility != 'volatile' then
+        stmt := stmt || ' ' || volatility;
+    end if;
+
+    if parallel is not null and parallel != 'unsafe' then
+        stmt := stmt || ' ' || parallel;
+    end if;
+
+    if security is not null and security != 'invoker' then
+        stmt := stmt || ' security ' || security;
+    end if;
+
+    stmt := stmt || ';';
 
     return stmt;
 end;
 $$ language plpgsql;
 
 
-create or replace function meta.stmt_function_drop(schema_name text, function_name text, parameters text[], return_type text, definition text, language text, returns_set boolean) returns text as $$
-declare
-    stmt text;
-    params text[] = '{}';
-    p text;
-    param text;
-    i integer;
-begin
-    stmt := 'drop function ' || quote_ident(schema_name) || '.' || quote_ident(function_name) || '(';
-
-    -- parameters
-    foreach p in array parameters loop
-        param := param || p.type_name;
-        params := array_append(params, param);
-    end loop;
-    stmt := stmt || array_to_string(params, ',') || ')';
-    return stmt;
-end;
-$$ language plpgsql;
-
-
-create function meta.stmt_function_drop(schema_name text, function_name text, parameters text[]) returns text as $$
+create function meta.stmt_function_drop(schema_name text, function_name text, type_sig text[]) returns text as $$
     select 'drop function ' || quote_ident(schema_name) || '.' || quote_ident(function_name) || '(' ||
-               array_to_string(parameters, ',') ||
+               array_to_string(type_sig, ',') ||
            ');';
 $$ language sql;
 
 
 create function meta.function_insert() returns trigger as $$
     begin
-        perform meta.require_all(public.hstore(NEW), array['name', 'parameters', 'return_type', 'definition', 'language']);
+        perform meta.require_all(public.hstore(NEW), array['name', 'return_type', 'definition', 'language']);
+        perform meta.require_one(public.hstore(NEW), array['parameters', 'type_sig']);
         perform meta.require_one(public.hstore(NEW), array['schema_id', 'schema_name']);
 
-        execute meta.stmt_function_create(coalesce(NEW.schema_name, (NEW.schema_id).name), NEW.name, NEW.parameters, NEW.return_type, NEW.definition, NEW.language, NEW.returns_set);
+        execute meta.stmt_function_create(coalesce(NEW.schema_name, (NEW.schema_id).name), NEW.name, NEW.type_sig, NEW.parameters, NEW.return_type, NEW.definition, NEW.language, NEW.returns_set, NEW.volatility, NEW.parallel, NEW.security);
 
         return NEW;
     end;
@@ -703,11 +702,12 @@ $$ language plpgsql;
 
 create function meta.function_update() returns trigger as $$
     begin
-        perform meta.require_all(public.hstore(NEW), array['name', 'parameters', 'return_type', 'definition', 'language']);
+        perform meta.require_all(public.hstore(NEW), array['name', 'return_type', 'definition', 'language']);
+        perform meta.require_one(public.hstore(NEW), array['parameters', 'type_sig']);
         perform meta.require_one(public.hstore(NEW), array['schema_id', 'schema_name']);
 
-        execute meta.stmt_function_drop(OLD.schema_name, OLD.name, OLD.parameters);
-        execute meta.stmt_function_create(coalesce(NEW.schema_name, (NEW.schema_id).name), NEW.name, NEW.parameters, NEW.return_type, NEW.definition, NEW.language, NEW.returns_set);
+        execute meta.stmt_function_drop(OLD.schema_name, OLD.name, OLD.type_sig);
+        execute meta.stmt_function_create(coalesce(NEW.schema_name, (NEW.schema_id).name), NEW.name, NEW.type_sig, NEW.parameters, NEW.return_type, NEW.definition, NEW.language, NEW.returns_set, NEW.volatility, NEW.parallel, NEW.security);
 
         return NEW;
     end;
