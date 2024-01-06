@@ -566,20 +566,18 @@ $$ language plpgsql;
  * meta.foreign_key
  *****************************************************************************/
 
-create function meta.stmt_foreign_key_create(schema_name text, table_name text, constraint_name text, from_column_ids meta.column_id[], to_column_ids meta.column_id[], on_update text, on_delete text) returns text as $$
+create or replace function meta.stmt_foreign_key_create(schema_name text, table_name text, constraint_name text, from_column_names text[], to_schema_name text, to_table_name text, to_column_names text[], match_option text, on_update text, on_delete text) returns text as $$
     select 'alter table ' || quote_ident(schema_name) || '.' || quote_ident(table_name) || ' add constraint ' || quote_ident(constraint_name) ||
            ' foreign key (' || (
-               select string_agg(name, ', ')
-               from meta."column"
-               where id = any(from_column_ids)
-
-           ) || ') references ' || (to_column_ids[1]).schema_name || '.' || (to_column_ids[1]).relation_name || (
-               select '(' || string_agg(c.name, ', ') || ')'
-               from meta."column" c
-               where c.id = any(to_column_ids)
-
-           ) || ' on update ' || on_update
-             || ' on delete ' || on_delete;
+               select string_agg(quote_ident(u.name), ', ')
+               from unnest(from_column_names) u(name)
+           ) || ') references ' || quote_ident(to_schema_name) || '.' || quote_ident(to_table_name) || '(' || (
+               select string_agg(quote_ident(u.name), ', ')
+               from unnest(to_column_names) u(name)
+           ) || ') '
+             || coalesce (' match ' || match_option, '')
+             || coalesce (' on update ' || on_update, '')
+             || coalesce (' on delete ' || on_delete, '');
 $$ language sql;
 
 
@@ -588,50 +586,53 @@ create function meta.stmt_foreign_key_drop(schema_name text, table_name text, co
 $$ language sql;
 
 
-create function meta.foreign_key_insert() returns trigger as $$
+create or replace function meta.foreign_key_insert() returns trigger as $$
     begin
-        perform meta.require_all(public.hstore(NEW), array['name', 'from_column_ids', 'to_column_ids', 'on_update', 'on_delete']);
-        perform meta.require_one(public.hstore(NEW), array['table_id', 'schema_name']);
-        perform meta.require_one(public.hstore(NEW), array['table_id', 'table_name']);
+        perform meta.require_all(public.hstore(NEW), array['schema_name', 'table_name', 'constraint_name', 'from_column_names', 'to_column_names']);
 
         execute meta.stmt_foreign_key_create(
-                    coalesce(NEW.schema_name, ((NEW.table_id).schema_name)),
-                    coalesce(NEW.table_name, (NEW.table_id).name),
-                    NEW.name, NEW.from_column_ids, NEW.to_column_ids, NEW.on_update, NEW.on_delete
-                );
+            NEW.schema_name,
+            NEW.table_name,
+            NEW.constraint_name,
+            NEW.from_column_names,
+            NEW.to_schema_name,
+            NEW.to_table_name,
+			NEW.to_column_names,
+			NEW.match_option,
+			NEW.on_update,
+			NEW.on_delete
+        );
         return NEW;
-
-    exception
-        when null_value_not_allowed then
-            raise exception 'A provided column_id was not found in meta.column.';
     end;
 $$ language plpgsql;
 
 
-create function meta.foreign_key_update() returns trigger as $$
+create or replace function meta.foreign_key_update() returns trigger as $$
     begin
-        perform meta.require_all(public.hstore(NEW), array['name', 'from_column_ids', 'to_column_ids', 'on_update', 'on_delete']);
-        perform meta.require_one(public.hstore(NEW), array['table_id', 'schema_name']);
-        perform meta.require_one(public.hstore(NEW), array['table_id', 'table_name']);
+        perform meta.require_all(public.hstore(NEW), array['schema_name', 'table_name', 'constraint_name', 'from_column_names', 'to_schema_name', 'to_table_name', 'to_column_names']);
 
-        execute meta.stmt_foreign_key_drop(OLD.schema_name, OLD.table_name, OLD.name);
+        execute meta.stmt_foreign_key_drop(OLD.schema_name, OLD.table_name, OLD.constraint_name);
+
         execute meta.stmt_foreign_key_create(
-                    coalesce(NEW.schema_name, ((NEW.table_id).schema_name)),
-                    coalesce(NEW.table_name, (NEW.table_id).name),
-                    NEW.name, NEW.from_column_ids, NEW.to_column_ids, NEW.on_update, NEW.on_delete
-                );
+            coalesce(NEW.schema_name, OLD.schema_name),
+            coalesce(NEW.table_name, OLD.table_name),
+            coalesce(NEW.constraint_name, OLD.constraint_name),
+            coalesce(NEW.from_column_names, OLD.from_column_names),
+            coalesce(NEW.to_schema_name, OLD.to_schema_name),
+            coalesce(NEW.to_table_name, OLD.to_table_name),
+			coalesce(NEW.to_column_names, OLD.to_column_names),
+			coalesce(NEW.match_option, OLD.match_option),
+			coalesce(NEW.on_update, OLD.on_update),
+			coalesce(NEW.on_delete, OLD.on_delete)
+        );
         return NEW;
-
-    exception
-        when null_value_not_allowed then
-            raise exception 'A provided column_id was not found in meta.column.';
     end;
 $$ language plpgsql;
 
 
 create function meta.foreign_key_delete() returns trigger as $$
     begin
-        execute meta.stmt_foreign_key_drop(OLD.schema_name, OLD.table_name, OLD.name);
+        execute meta.stmt_foreign_key_drop(OLD.schema_name, OLD.table_name, OLD.constraint_name);
         return OLD;
     end;
 $$ language plpgsql;
