@@ -597,10 +597,10 @@ create or replace function meta.foreign_key_insert() returns trigger as $$
             NEW.from_column_names,
             NEW.to_schema_name,
             NEW.to_table_name,
-			NEW.to_column_names,
-			NEW.match_option,
-			NEW.on_update,
-			NEW.on_delete
+            NEW.to_column_names,
+            NEW.match_option,
+            NEW.on_update,
+            NEW.on_delete
         );
         return NEW;
     end;
@@ -620,10 +620,10 @@ create or replace function meta.foreign_key_update() returns trigger as $$
             coalesce(NEW.from_column_names, OLD.from_column_names),
             coalesce(NEW.to_schema_name, OLD.to_schema_name),
             coalesce(NEW.to_table_name, OLD.to_table_name),
-			coalesce(NEW.to_column_names, OLD.to_column_names),
-			coalesce(NEW.match_option, OLD.match_option),
-			coalesce(NEW.on_update, OLD.on_update),
-			coalesce(NEW.on_delete, OLD.on_delete)
+            coalesce(NEW.to_column_names, OLD.to_column_names),
+            coalesce(NEW.match_option, OLD.match_option),
+            coalesce(NEW.on_update, OLD.on_update),
+            coalesce(NEW.on_delete, OLD.on_delete)
         );
         return NEW;
     end;
