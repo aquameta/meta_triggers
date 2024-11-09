@@ -1,4 +1,5 @@
 # generated files
+meta_triggers--*.sql
 *.swp
 *.swo
 *.pyc
